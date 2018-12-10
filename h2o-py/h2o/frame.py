@@ -2601,41 +2601,63 @@ class H2OFrame(object):
         '''
         import xgboost as xgb
         import pandas as pd
-        import numpy as np
         from scipy.sparse import csr_matrix
+        import numpy as np
 
         assert isinstance(predictors, list) or isinstance(predictors, tuple)
         assert h2oXGBoostModel._model_json['algo'] == 'xgboost', \
             "convert_H2OFrame_2_DMatrix is used for H2OXGBoost model only."
 
-        colnames = self.names
-        if type(predictors[0])=='int': # convert integer indices to column names
+        colnames = self.names # map names to column indices using this
+        if type(predictors[0])==type(1): # convert integer indices to column names
             temp = []
             for colInd in predictors:
                 temp.append(colnames[colInd])
             predictors = temp
 
-        if (type(yresp) == 'int'):
+        if (type(yresp) == type(1)):
             tempy = colnames[yresp]
             yresp = tempy
 
         enumCols = [] # extract enum columns out to process them
+        enumColsIndices = []     # store enum column indices
+        enumDomainList = []
         typeDict = self.types
         for predName in predictors:
             if str(typeDict[predName])=='enum':
                 enumCols.append(predName)
+                enumColsIndices.append(colnames.index(predName))
+#                enumDomainList.append(self[predName].categories())
 
         pandaFtrain = self.as_data_frame(use_pandas=True, header=True)
         nrows = self.nrow
 
         # convert H2OFrame to DMatrix starts here
         if len(enumCols) > 0:   # start with first enum column
-            pandaTrainPart = generatePandaEnumCols(pandaFtrain, enumCols[0], nrows)
+            allDomain = self.levels() # list all domain levels with column indices
+            domainLen = []
+            for enumIndex in enumColsIndices:
+                if len(allDomain[enumIndex])>0:
+                    domainLen.append(len(allDomain[enumIndex]))
+            incLevel = np.argsort(domainLen)
+
+            enumCols = []
+            # need to move enum columns to the front, highest level first
+            for index in range(0, len(enumCols)):
+                c1 = self[enumCols[incLevel[index]]]
+                enumCols.append(c1.names)
+                t1 = self.drop(enumCols[incLevel[index]])
+                enumDomainList.append(c1.categories())
+                self = c1.cbind(t1)
+                
+            pandaFtrain = self.as_data_frame(use_pandas=True, header=True) # redo translation from H2O to panda
+        
+            pandaTrainPart = generatePandaEnumCols(pandaFtrain, enumCols[enumColsIndices[incLevel[-1]]], nrows, enumDomainList[0])
             pandaFtrain.drop([enumCols[0]], axis=1, inplace=True)
 
             for colInd in range(1, len(enumCols)):
                 cname=enumCols[colInd]
-                ctemp = generatePandaEnumCols(pandaFtrain, cname,  nrows)
+                ctemp = generatePandaEnumCols(pandaFtrain, cname,  nrows, enumDomainList[colInd])
                 pandaTrainPart=pd.concat([pandaTrainPart, ctemp], axis=1)
                 pandaFtrain.drop([cname], axis=1, inplace=True)
 
@@ -3422,7 +3444,7 @@ def _binop(lhs, op, rhs, rtype=None):
 
 
 
-def generatePandaEnumCols(pandaFtrain, cname, nrows):
+def generatePandaEnumCols(pandaFtrain, cname, nrows, domainList):
     """
     For an H2O Enum column, we perform one-hot-encoding here and add one more column, "missing(NA)" to it.
 
@@ -3440,8 +3462,8 @@ def generatePandaEnumCols(pandaFtrain, cname, nrows):
     colVals = pandaFtrain[cname]
     for ind in range(nrows):
         try:
-            float(colVals[ind])
-            if math.isnan(colVals[ind]):
+            tempVals = domainList.index(colVals[ind])
+            if tempVals < 0:
                 tempnp[ind]=1
         except ValueError:
             pass
