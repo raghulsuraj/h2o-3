@@ -184,7 +184,7 @@ class BinaryMerge extends DTask<BinaryMerge> {
     assert retSize >= 0;
     if (retSize==0) { tryComplete(); return; } // nothing can match, even when allLeft
 
-    _retBatchSize =(int) Math.pow(2,14);   // must set to be the same from RadixOrder.java
+    _retBatchSize = 524288;   // must set to be the same from RadixOrder.java
     int retNBatch = (int)((retSize - 1) / _retBatchSize + 1);
     int retLastSize = (int)(retSize - (retNBatch - 1) * _retBatchSize);
 
@@ -571,11 +571,34 @@ class BinaryMerge extends DTask<BinaryMerge> {
       _timings[10] += ((t1 = System.nanoTime()) - t0) / 1e9;
       t0 = t1;
 
-      for (int b = 0; b < nbatch; b++) { // clean up all memories used, this part is fine.
-        chunksCompressAndStore(b, numColsInResult, frameLikeChunks, frameLikeChunks4Strings);
-      }
+      chunksCompressAndStoreO(nbatch, numColsInResult, frameLikeChunks, frameLikeChunks4Strings);
     }
     _timings[11] += (System.nanoTime() - t0) / 1e9;
+  }
+
+  // compress all chunks and store them
+  private void chunksCompressAndStoreO(final int nbatch, final int numColsInResult, final double[][][] frameLikeChunks, BufferedString[][][] frameLikeChunks4String) {
+    // compress all chunks and store them
+    Futures fs = new Futures();
+    for (int col = 0; col < numColsInResult; col++) {
+      if (this._stringCols[col]) {
+        for (int b = 0; b < nbatch; b++) {
+          NewChunk nc = new NewChunk(null, 0);
+          for (int index = 0; index < frameLikeChunks4String[col][b].length; index++)
+            nc.addStr(frameLikeChunks4String[col][b][index]);
+          Chunk ck = nc.compress();
+          DKV.put(getKeyForMSBComboPerCol(_leftSB._msb, _riteSB._msb, col, b), ck, fs, true);
+          frameLikeChunks4String[col][b] = null; //free mem as early as possible (it's now in the store)
+        }
+      } else {
+        for (int b = 0; b < nbatch; b++) {
+          Chunk ck = new NewChunk(frameLikeChunks[col][b]).compress();
+          DKV.put(getKeyForMSBComboPerCol(_leftSB._msb, _riteSB._msb, col, b), ck, fs, true);
+          frameLikeChunks[col][b] = null; //free mem as early as possible (it's now in the store)
+        }
+      }
+    }
+    fs.blockForPending();
   }
 
   private void allocateFrameLikeChunks(final int b, final int nbatch, final int lastSize, final int batchSizeUUID, final double[][][] frameLikeChunks,
