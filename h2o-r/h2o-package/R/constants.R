@@ -20,12 +20,12 @@ assign("LOG_FILE_NAME", NULL,  .pkg.env)
 #'
 #' Map of operations known to H2O
 #'
-.h2o.primitives = c( 
+.h2o.primitives = c(
   "*", "+", "/", "-", "^", "%%", "%/%",
   "==", "!=", "<", ">", "<=", ">=",
-  "cos", "sin", "acos", "cosh", "tan", "tanh", "exp", "log", "sqrt", 
-  "abs", "ceiling", "floor", 
-  "mean", "sd", "sum", "prod", "all", "any", "min", "max", 
+  "cos", "sin", "acos", "cosh", "tan", "tanh", "exp", "log", "sqrt",
+  "abs", "ceiling", "floor",
+  "mean", "sd", "sum", "prod", "all", "any", "min", "max",
   "is.factor", "nrow", "ncol", "length" , "which.max", "which.min"
 )
 
@@ -131,7 +131,7 @@ assign("LOG_FILE_NAME", NULL,  .pkg.env)
 .h2o.__SAVE_MODEL <- function(model) paste0("Models.bin/", model)
 .h2o.__LOAD_MODEL <- "Models.bin/"
 
-# Grid search 
+# Grid search
 .h2o.__GRID <- function(algo) paste0("Grid/", algo)
 .h2o.__GRIDS <- function(grid_id, sort_by, decreasing) {
     if (missing(grid_id)) {
